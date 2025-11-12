@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>3D 미로 탈출 (DOOM 스타일)</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: black; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg {
+    position: absolute;
+    top: 10px; left: 10px;
+    color: white; font-size: 20px;
+    font-family: sans-serif;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="600"></canvas>
+<div id="msg">Level 1</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const msg = document.getElementById("msg");
+
+// === 플레이어 설정 ===
+let player = { x: 2.5, y: 2.5, dir: 0, fov: Math.PI/3 };
+let keys = {};
+let level = 1;
+let map = [];
+let mapW = 8, mapH = 8;
+let exit = {x:6.5, y:6.5};
+let canProgress = true; // ✅ 중복 레벨업 방지 플래그
+
+const moveSpeed = 0.05, rotSpeed = 0.04;
+
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+// === 미로 생성 ===
+function generateMaze(w,h){
+  let maze = Array.from({length:h},()=>Array(w).fill(1));
+  function carve(x,y){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    maze[y][x]=0;
+    shuffle(dirs).forEach(([dx,dy])=>{
+      const nx=x+dx*2, ny=y+dy*2;
+      if(ny>0&&ny<h-1&&nx>0&&nx<w-1&&maze[ny][nx]===1){
+        maze[y+dy][x+dx]=0;
+        carve(nx,ny);
+      }
+    });
+  }
+  carve(1,1);
+  maze[h-2][w-2]=0;
+  return maze;
+}
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
+// === 레벨 초기화 ===
+function initLevel(){
+  mapW = Math.min(8 + level * 2, 60); // ✅ 너무 커지지 않게 제한
+  mapH = Math.min(8 + level * 2, 60);
+  map = generateMaze(mapW, mapH);
+  player.x = 1.5; player.y = 1.5; player.dir = 0;
+  exit = {x: mapW - 2.5, y: mapH - 2.5};
+  msg.textContent = "Level " + level;
+  canProgress = true;
+}
+
+// === 이동 ===
+function update(){
+  if(keys["ArrowLeft"]) player.dir -= rotSpeed;
+  if(keys["ArrowRight"]) player.dir += rotSpeed;
+
+  let nx = player.x, ny = player.y;
+  if(keys["ArrowUp"]){
+    nx += Math.cos(player.dir)*moveSpeed;
+    ny += Math.sin(player.dir)*moveSpeed;
+  }
+  if(keys["ArrowDown"]){
+    nx -= Math.cos(player.dir)*moveSpeed;
+    ny -= Math.sin(player.dir)*moveSpeed;
+  }
+  if(map[Math.floor(ny)][Math.floor(player.x)]===0) player.y = ny;
+  if(map[Math.floor(player.y)][Math.floor(nx)]===0) player.x = nx;
+
+  // 출구 도달
+  const dx = player.x - exit.x;
+  const dy = player.y - exit.y;
+  if(canProgress && Math.hypot(dx,dy) < 0.5){
+    canProgress = false; // ✅ 1회만 실행
+    msg.textContent = `Level ${level} 클리어!`;
+    level++;
+    setTimeout(()=>initLevel(), 1000);
+  }
+}
+
+// === 레이캐스팅 ===
+function render3D(){
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle="#202020"; ctx.fillRect(0,0,w,h/2);
+  ctx.fillStyle="#3a3a3a"; ctx.fillRect(0,h/2,w,h/2);
+  
+  const distProj = (w/2)/Math.tan(player.fov/2);
+
+  for(let x=0;x<w;x++){
+    const rayAngle = player.dir - player.fov/2 + (x/w)*player.fov;
+    let dist = 0, hit = false;
+    const step = 0.02;
+    while(!hit && dist < 20){
+      dist += step;
+      const rx = player.x + Math.cos(rayAngle)*dist;
+      const ry = player.y + Math.sin(rayAngle)*dist;
+      if(map[Math.floor(ry)]?.[Math.floor(rx)] > 0) hit = true;
+    }
+
+    if(hit){
+      const wallH = (1/dist)*distProj;
+      const shade = Math.max(0,255 - dist*30);
+      ctx.fillStyle = `rgb(${shade*0.6},${shade*0.8},${shade})`;
+      ctx.fillRect(x, h/2 - wallH/2, 1, wallH);
+    }
+  }
+}
+
+// === 미니맵 (자동 축소) ===
+function renderMiniMap(){
+  const maxMiniSize = 150; // ✅ 미니맵 최대 크기 제한
+  const scale = Math.min(maxMiniSize / mapW, maxMiniSize / mapH);
+
+  for(let y=0;y<mapH;y++){
+    for(let x=0;x<mapW;x++){
+      ctx.fillStyle = map[y][x] ? "#333" : "#bbb";
+      ctx.fillRect(x*scale, y*scale, scale, scale);
+    }
+  }
+  // 출구
+  ctx.fillStyle="lime";
+  ctx.fillRect(exit.x*scale, exit.y*scale, scale, scale);
+  // 플레이어
+  ctx.fillStyle="red";
+  ctx.beginPath();
+  ctx.arc(player.x*scale, player.y*scale, 2, 0, Math.PI*2);
+  ctx.fill();
+}
+
+// === 메인 루프 ===
+function loop(){
+  update();
+  render3D();
+  renderMiniMap();
+  requestAnimationFrame(loop);
+}
+
+initLevel();
+loop();
+</script>
+</body>
+</html>
