@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>둠 스타일 미로 게임</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; color: white; }
+    canvas { display: block; margin: 0 auto; background: #111; }
+    #level { position: absolute; top: 10px; left: 10px; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <div id="level">레벨 1</div>
+  <canvas id="game" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let level = 1;
+    let posX = 2, posY = 2, dir = 0; // 플레이어 위치와 방향
+    const mapSize = 10;
+    const map = generateMap(mapSize);
+
+    function generateMap(size) {
+      let grid = [];
+      for (let y = 0; y < size; y++) {
+        grid[y] = [];
+        for (let x = 0; x < size; x++) {
+          if (x === 0 || y === 0 || x === size-1 || y === size-1) grid[y][x] = 1;
+          else grid[y][x] = Math.random() < 0.2 ? 1 : 0;
+        }
+      }
+      grid[1][1] = 0;
+      grid[size-2][size-2] = 0;
+      return grid;
+    }
+
+    const keys = {};
+    document.addEventListener('keydown', e => keys[e.key] = true);
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
+    function movePlayer() {
+      const speed = 0.05;
+      const rotSpeed = 0.05;
+      if (keys['a']) dir -= rotSpeed;
+      if (keys['d']) dir += rotSpeed;
+      const moveX = Math.cos(dir) * speed;
+      const moveY = Math.sin(dir) * speed;
+      if (keys['w']) {
+        if (map[Math.floor(posY)][Math.floor(posX + moveX)] === 0) posX += moveX;
+        if (map[Math.floor(posY + moveY)][Math.floor(posX)] === 0) posY += moveY;
+      }
+      if (keys['s']) {
+        if (map[Math.floor(posY)][Math.floor(posX - moveX)] === 0) posX -= moveX;
+        if (map[Math.floor(posY - moveY)][Math.floor(posX)] === 0) posY -= moveY;
+      }
+    }
+
+    function draw() {
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const fov = Math.PI / 3;
+      const numRays = canvas.width;
+      for (let i = 0; i < numRays; i++) {
+        const rayAngle = dir - fov/2 + (i / numRays) * fov;
+        let dist = 0;
+        let hit = false;
+        while (!hit && dist < 20) {
+          dist += 0.05;
+          const x = posX + Math.cos(rayAngle) * dist;
+          const y = posY + Math.sin(rayAngle) * dist;
+          if (map[Math.floor(y)]?.[Math.floor(x)] === 1) hit = true;
+        }
+        const wallHeight = canvas.height / (dist * Math.cos(rayAngle - dir));
+        ctx.fillStyle = `rgb(${200 - dist*15}, ${200 - dist*15}, ${200 - dist*15})`;
+        ctx.fillRect(i, (canvas.height - wallHeight)/2, 1, wallHeight);
+      }
+
+      if (Math.floor(posX) === mapSize-2 && Math.floor(posY) === mapSize-2) {
+        level++;
+        document.getElementById('level').textContent = `레벨 ${level}`;
+        posX = 2; posY = 2; dir = 0;
+        Object.assign(map, generateMap(mapSize + Math.min(level, 20)));
+      }
+    }
+
+    function gameLoop() {
+      movePlayer();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
